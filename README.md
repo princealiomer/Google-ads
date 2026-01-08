@@ -1,6 +1,10 @@
 # Google Ads Transparency Scraper
 
-This tool scrapes advertiser information from Google's Ads Transparency Center for queries A-Z.
+This project contains multiple scrapers for Google's Ads Transparency Center:
+
+- **Playwright Scraper** (`scrape_google_ads_transparency.py`) - Basic scraper for advertiser data
+- **Selenium Advanced Scraper** (`scrape_advanced_selenium.py`) - Extracts creative URLs from each advertiser page
+- **Streamlit Web App** (`app.py`) - Interactive dashboard for viewing and analyzing scraped data
 
 ## Features
 
@@ -30,19 +34,40 @@ playwright install chromium
 
 ## Usage
 
-### Basic Usage (Scrape A-Z):
+### Option 1: Playwright Scraper (Basic)
+
+Scrapes advertiser data from search results:
 
 ```bash
+pip install -r requirements-scraper.txt
+playwright install chromium
 python scrape_google_ads_transparency.py
 ```
 
-### Customize Queries:
+### Option 2: Selenium Advanced Scraper (With Creative URLs)
 
-Edit the `scrape_google_ads_transparency.py` file and modify the `run()` call at the bottom:
+Visits each advertiser page and extracts all creative URLs:
 
-```python
-# Example: Only scrape specific letters
-asyncio.run(scraper.run(queries=['a', 'b', 'c']))
+```bash
+pip install -r requirements-selenium.txt
+# Make sure Chrome/ChromeDriver is installed
+python scrape_advanced_selenium.py
+```
+
+**Features:**
+
+- Navigates through all search result pages
+- Visits each advertiser's page
+- Extracts all creative URLs
+- Saves data in multiple formats (CSV, JSON)
+
+### Option 3: Streamlit Web App (View Data)
+
+Interactive dashboard for analyzing scraped data:
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
 ```
 
 ## Output

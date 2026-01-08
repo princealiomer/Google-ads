@@ -1,5 +1,2 @@
-# Requirements for LOCAL scraping only
-# DO NOT use this for Streamlit Cloud deployment
-
-playwright==1.41.0
-pandas==2.2.0
+# Requirements for Google Ads Scraper
+selenium==4.16.0
