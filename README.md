@@ -1,123 +1,87 @@
 # Google Ads Transparency Scraper
 
-This project contains multiple scrapers for Google's Ads Transparency Center:
+A Selenium-based scraper for extracting advertiser data and creative URLs from Google Ads Transparency Center.
 
-- **Playwright Scraper** (`scrape_google_ads_transparency.py`) - Basic scraper for advertiser data
-- **Selenium Advanced Scraper** (`scrape_advanced_selenium.py`) - Extracts creative URLs from each advertiser page
-- **Streamlit Web App** (`app.py`) - Interactive dashboard for viewing and analyzing scraped data
+## 🚀 Features
 
-## Features
+- Extracts advertiser information (name, location, verification status, ad count)
+- Visits each advertiser page to collect all creative URLs
+- Navigates through all search result pages automatically
+- Saves data in multiple formats (CSV, JSON)
+- Interactive Streamlit dashboard for data visualization
 
-- Scrapes all advertisers for queries A through Z
-- Handles dynamic JavaScript content
-- Extracts advertiser names, URLs, and regions
-- Exports data to CSV and JSON formats
-- Automatic scrolling and "Load More" button handling
-- Duplicate removal
-- Comprehensive logging
+## 📋 Requirements
 
-## Installation
+- Python 3.9+
+- Chrome browser
+- ChromeDriver (automatically managed by Selenium)
 
-1. Install Python 3.8 or higher
+## 🛠️ Installation
 
-2. Install required packages:
-
-```bash
-pip install -r requirements.txt
-```
-
-3. Install Playwright browsers:
-
-```bash
-playwright install chromium
-```
-
-## Usage
-
-### Option 1: Playwright Scraper (Basic)
-
-Scrapes advertiser data from search results:
+### For Scraping (Local Only)
 
 ```bash
 pip install -r requirements-scraper.txt
-playwright install chromium
-python scrape_google_ads_transparency.py
 ```
 
-### Option 2: Selenium Advanced Scraper (With Creative URLs)
-
-Visits each advertiser page and extracts all creative URLs:
-
-```bash
-pip install -r requirements-selenium.txt
-# Make sure Chrome/ChromeDriver is installed
-python scrape_advanced_selenium.py
-```
-
-**Features:**
-
-- Navigates through all search result pages
-- Visits each advertiser's page
-- Extracts all creative URLs
-- Saves data in multiple formats (CSV, JSON)
-
-### Option 3: Streamlit Web App (View Data)
-
-Interactive dashboard for analyzing scraped data:
+### For Streamlit Dashboard
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Output
+## 📊 Usage
 
-The scraper generates two files:
-
-- `google_ads_advertisers_YYYYMMDD_HHMMSS.csv` - CSV format
-- `google_ads_advertisers_YYYYMMDD_HHMMSS.json` - JSON format
-
-### CSV Columns:
-
-- `query` - The search query letter used
-- `name` - Advertiser name
-- `url` - Link to advertiser's transparency page
-- `region` - Advertiser's region (if available)
-
-## Configuration
-
-You can modify the following settings in `scrape_google_ads_transparency.py`:
-
-- `headless=False` → Set to `True` to run browser in background
-- `max_scrolls=10` → Increase to load more results per query
-- Delays between requests (default: 2000ms)
-
-## Troubleshooting
-
-### Issue: No advertisers found
-
-- Check your internet connection
-- The page structure might have changed - inspect the HTML
-- Try running with `headless=False` to see what's happening
-
-### Issue: Browser not launching
+### Run the Scraper
 
 ```bash
-playwright install chromium --force
+python scrape_google_ads_transparency.py
 ```
 
-### Issue: Import errors
+This will:
+
+1. Navigate to Google Ads Transparency Center
+2. Extract advertiser data from search results
+3. Visit each advertiser's page
+4. Collect all creative URLs
+5. Save results to CSV and JSON files
+
+### View Results in Dashboard
 
 ```bash
-pip install -r requirements.txt --upgrade
+streamlit run app.py
 ```
 
-## Logs
+Then upload your scraped CSV files or use the sample data.
 
-Check `scraper.log` for detailed execution logs.
+## 📁 Output Files
 
-## Notes
+The scraper generates:
 
-- The script respects rate limiting with delays between requests
-- Duplicates are automatically removed based on advertiser URL
-- The scraper handles pagination by scrolling and clicking "Load More" buttons
+- `google_ads_advertisers.csv` - Summary of advertisers
+- `google_ads_all_urls.json` - All creative URLs
+- `creative_urls_detailed.json` - Creative URLs organized by advertiser
+
+## ⚙️ Configuration
+
+Edit the scraper initialization in `scrape_google_ads_transparency.py`:
+
+```python
+scraper = GoogleAdsTransparencyScraperAdvanced(
+    start_query="a",      # Search query
+    region="US",          # Region code
+    output_csv="...",     # CSV output filename
+    output_json="..."     # JSON output filename
+)
+```
+
+## 🌐 Streamlit Cloud Deployment
+
+The Streamlit app (`app.py`) can be deployed to Streamlit Cloud for viewing and analyzing scraped data.
+
+**Note:** The scraper itself cannot run on Streamlit Cloud (requires browser automation). Run it locally and upload the results to the dashboard.
+
+## 📝 License
+
+MIT License
