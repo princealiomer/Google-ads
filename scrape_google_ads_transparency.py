@@ -1,36 +1,34 @@
 """
-Google Ads Transparency Advanced Scraper with Selenium
-Extracts advertiser data and all creative URLs from each advertiser page
+Google Ads Transparency Scraper
+Extracts advertiser data including advertiser URLs and sample ad URLs
 """
 
 import time
 import csv
-import json
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-class GoogleAdsTransparencyScraperAdvanced:
-    def __init__(self, start_query="a", region="US", output_csv="advertisers_data.csv", output_json="creative_urls.json"):
+class GoogleAdsTransparencyScraper:
+    def __init__(self, start_query="a", region="anywhere", output_file="advertisers_data.csv"):
         """
-        Initialize the advanced scraper
+        Initialize the scraper
         
         Args:
             start_query: Initial search query (default: "a")
-            region: Region code (default: "US")
-            output_csv: Output CSV filename for advertiser summary
-            output_json: Output JSON filename for all URLs
+            region: Region code (default: "anywhere")
+            output_file: Output CSV filename
         """
         self.base_url = f"https://adstransparency.google.com/search?region={region}&query={start_query}"
         self.region = region
-        self.output_csv = output_csv
-        self.output_json = output_json
-        self.advertisers_data = []
-        self.all_urls = []
+        self.output_file = output_file
+        self.data = []
         self.driver = None
+        self.scraped_advertisers = set()  # Track scraped advertisers to avoid duplicates
         
     def setup_driver(self):
         """Initialize Selenium WebDriver"""
@@ -39,133 +37,153 @@ class GoogleAdsTransparencyScraperAdvanced:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
         
         self.driver = webdriver.Chrome(options=chrome_options)
+        self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+            "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
         
-    def extract_advertiser_data_from_search_page(self):
-        """Extract advertiser data from search results page"""
+    def extract_advertiser_data(self):
+        """Extract advertiser data from current page"""
         try:
-            wait = WebDriverWait(self.driver, 10)
+            # Wait for listbox to load
+            wait = WebDriverWait(self.driver, 15)
             listbox = wait.until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "[role='listbox']"))
             )
             
-            options = self.driver.find_elements(By.CSS_SELECTOR, "[role='option']")
+            # Wait a bit for all elements to render
+            time.sleep(2)
             
-            for option in options:
+            # Get all options (advertiser items)
+            options = self.driver.find_elements(By.CSS_SELECTOR, "[role='option']")
+            print(f"Found {len(options)} advertisers on this page")
+            
+            for idx, option in enumerate(options):
                 try:
-                    text_content = option.text
-                    lines = text_content.split('\n')
+                    # Extract advertiser name
+                    name_elem = option.find_element(By.CSS_SELECTOR, "span:first-child")
+                    advertiser_name = name_elem.text.strip()
                     
-                    advertiser_name = lines[0] if len(lines) > 0 else ""
+                    # Skip if already scraped
+                    if advertiser_name in self.scraped_advertisers:
+                        continue
+                    
+                    # Extract number of ads
                     ads_text = None
                     based_in = None
                     verified = False
                     
+                    # Get all text content
+                    text_content = option.text
+                    lines = [line.strip() for line in text_content.split('\n') if line.strip()]
+                    
+                    # Parse lines
                     for line in lines:
-                        if "ads" in line:
+                        if "ad" in line.lower() and any(char.isdigit() for char in line):
                             ads_text = line.strip()
                         elif "Based in:" in line:
                             based_in = line.replace("Based in:", "").strip()
                     
-                    verified_elem = option.find_elements(By.XPATH, ".//span[contains(text(), 'verified')]")
-                    verified = len(verified_elem) > 0
+                    # Check if verified
+                    try:
+                        option.find_element(By.XPATH, ".//span[contains(text(), 'verified') or contains(text(), 'Verified')]")
+                        verified = True
+                    except NoSuchElementException:
+                        verified = False
                     
+                    # Get advertiser URL and one ad link
+                    advertiser_url, ad_link = self.get_advertiser_and_ad_url(option, advertiser_name)
+                    
+                    # Store data
                     data_dict = {
                         "advertiser_name": advertiser_name,
                         "number_of_ads": ads_text,
                         "based_in": based_in,
                         "verified": verified,
-                        "advertiser_page_url": None,
-                        "creative_urls": [],
+                        "advertiser_url": advertiser_url,
+                        "sample_ad_url": ad_link,
                         "scrape_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
                     
-                    self.advertisers_data.append(data_dict)
-                    print(f"✓ Found: {advertiser_name} - {ads_text} - {based_in}")
+                    self.data.append(data_dict)
+                    self.scraped_advertisers.add(advertiser_name)
+                    print(f"✓ [{idx+1}/{len(options)}] {advertiser_name} | Ads: {ads_text} | Location: {based_in} | Verified: {verified}")
                     
                 except Exception as e:
-                    print(f"Error extracting advertiser data: {str(e)}")
+                    print(f"Error extracting advertiser {idx+1}: {str(e)}")
                     continue
                     
         except Exception as e:
-            print(f"Error in extract_advertiser_data_from_search_page: {str(e)}")
+            print(f"Error in extract_advertiser_data: {str(e)}")
     
-    def extract_creative_urls_from_advertiser_page(self, advertiser_index):
+    def get_advertiser_and_ad_url(self, option_element, advertiser_name):
         """
-        Extract all creative URLs from an advertiser's page
+        Get the advertiser URL and one ad URL by clicking through
+        """
+        advertiser_url = None
+        ad_link = None
+        original_url = self.driver.current_url
         
-        Args:
-            advertiser_index: Index of the advertiser in the list
-        """
         try:
-            # Get advertiser page URL
-            advertiser_page_url = self.driver.current_url
-            self.advertisers_data[advertiser_index]["advertiser_page_url"] = advertiser_page_url
+            # Scroll element into view
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", option_element)
+            time.sleep(0.5)
             
-            print(f"\n📄 Extracting creatives from: {advertiser_page_url}")
+            # Click the option to navigate to advertiser page
+            option_element.click()
+            time.sleep(3)
             
-            # Find all creative links
-            creative_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, '/creative/')]")
-            
-            creative_urls = []
-            for link in creative_links:
-                href = link.get_attribute("href")
-                if href and "/creative/" in href:
-                    # Construct full URL
-                    if href.startswith("http"):
-                        full_url = href
-                    else:
-                        full_url = "https://adstransparency.google.com" + href
+            # Get advertiser URL
+            current_url = self.driver.current_url
+            if "advertiser" in current_url:
+                advertiser_url = current_url
+                
+                # Now try to get one ad link
+                try:
+                    wait = WebDriverWait(self.driver, 10)
+                    # Look for ad creative cards or links
+                    ad_elements = self.driver.find_elements(By.CSS_SELECTOR, "[role='option'], a[href*='/creative/']")
                     
-                    creative_urls.append(full_url)
-                    self.all_urls.append({
-                        "advertiser_name": self.advertisers_data[advertiser_index]["advertiser_name"],
-                        "advertiser_page_url": advertiser_page_url,
-                        "creative_url": full_url,
-                        "scrape_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    })
+                    if ad_elements:
+                        for ad_elem in ad_elements[:5]:  # Check first 5 elements
+                            try:
+                                ad_elem.click()
+                                time.sleep(2)
+                                
+                                if "/creative/" in self.driver.current_url:
+                                    ad_link = self.driver.current_url
+                                    break
+                            except:
+                                continue
+                                
+                except Exception as e:
+                    print(f"  Could not extract ad link for {advertiser_name}: {str(e)}")
             
-            # Remove duplicates
-            self.advertisers_data[advertiser_index]["creative_urls"] = list(set(creative_urls))
-            
-            print(f"✓ Found {len(set(creative_urls))} unique creative URLs")
+            # Navigate back to search results
+            self.driver.get(original_url)
+            time.sleep(2)
             
         except Exception as e:
-            print(f"Error extracting creative URLs: {str(e)}")
-    
-    def navigate_to_advertiser(self, advertiser_index):
-        """Navigate to an advertiser's page and extract data"""
-        try:
-            # Wait for listbox and get the option
-            wait = WebDriverWait(self.driver, 10)
-            listbox = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "[role='listbox']"))
-            )
-            
-            options = self.driver.find_elements(By.CSS_SELECTOR, "[role='option']")
-            
-            if advertiser_index < len(options):
-                option = options[advertiser_index]
-                option.click()
-                time.sleep(3)  # Wait for page to load
-                
-                # Extract creative URLs from advertiser page
-                self.extract_creative_urls_from_advertiser_page(advertiser_index)
-                
-                # Go back to search results
-                self.driver.back()
+            print(f"  Error getting URLs for {advertiser_name}: {str(e)}")
+            # Try to navigate back
+            try:
+                self.driver.get(original_url)
                 time.sleep(2)
-                
-        except Exception as e:
-            print(f"Error navigating to advertiser: {str(e)}")
+            except:
+                pass
+        
+        return advertiser_url, ad_link
     
     def check_next_button(self):
         """Check if Next button is enabled"""
         try:
             next_button = self.driver.find_element(By.XPATH, "//button[contains(., 'Next')]")
-            is_enabled = next_button.get_attribute("aria-disabled") != "true"
+            is_disabled = next_button.get_attribute("aria-disabled") == "true"
+            is_enabled = not is_disabled and next_button.is_enabled()
             return is_enabled, next_button
         except:
             return False, None
@@ -173,27 +191,29 @@ class GoogleAdsTransparencyScraperAdvanced:
     def click_next_page(self, next_button):
         """Click the Next button to go to next page"""
         try:
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_button)
+            time.sleep(0.5)
             next_button.click()
-            time.sleep(2)
+            time.sleep(3)  # Wait for page to load
             return True
         except Exception as e:
             print(f"Error clicking next button: {str(e)}")
             return False
     
-    def scrape_all_pages(self, visit_advertiser_pages=True):
+    def scrape_all_pages(self, max_pages=None):
         """
         Scrape all pages of results
         
         Args:
-            visit_advertiser_pages: If True, visit each advertiser page to extract creative URLs
+            max_pages: Maximum number of pages to scrape (None for all pages)
         """
         page_count = 1
-        advertiser_count = 0
         
         try:
             self.setup_driver()
+            print(f"Opening: {self.base_url}")
             self.driver.get(self.base_url)
-            time.sleep(3)
+            time.sleep(4)  # Initial page load
             
             while True:
                 print(f"\n{'='*80}")
@@ -201,161 +221,102 @@ class GoogleAdsTransparencyScraperAdvanced:
                 print(f"{'='*80}")
                 
                 # Extract data from current page
-                self.extract_advertiser_data_from_search_page()
+                self.extract_advertiser_data()
                 
-                # If requested, visit each advertiser page on this page to get creative URLs
-                if visit_advertiser_pages:
-                    options = self.driver.find_elements(By.CSS_SELECTOR, "[role='option']")
-                    num_on_page = len(options)
-                    
-                    for i in range(num_on_page):
-                        advertiser_count += 1
-                        print(f"\n[{advertiser_count}] Visiting advertiser page...")
-                        self.navigate_to_advertiser(i)
+                # Check if we've reached max pages
+                if max_pages and page_count >= max_pages:
+                    print(f"\n✓ Reached maximum pages limit ({max_pages})")
+                    break
                 
                 # Check if Next button is available and enabled
                 is_enabled, next_button = self.check_next_button()
                 
                 if is_enabled:
-                    print(f"\n➜ Moving to next page...")
+                    print(f"\n➜ Moving to page {page_count + 1}...")
                     if self.click_next_page(next_button):
                         page_count += 1
                     else:
+                        print("Could not click next button, stopping...")
                         break
                 else:
-                    print(f"\n✓ Reached end of results (Next button disabled)")
+                    print("\n✓ Reached end of results (Next button disabled or not found)")
                     break
                     
+        except KeyboardInterrupt:
+            print("\n\n⚠ Scraping interrupted by user")
         except Exception as e:
-            print(f"Error during scraping: {str(e)}")
+            print(f"\n❌ Error during scraping: {str(e)}")
         finally:
-            self.driver.quit()
+            if self.driver:
+                self.driver.quit()
+                print("\n✓ Browser closed")
     
     def save_to_csv(self):
-        """Save advertiser summary to CSV file"""
-        if not self.advertisers_data:
+        """Save collected data to CSV file"""
+        if not self.data:
             print("No data to save")
             return
         
         try:
-            fieldnames = [
-                "advertiser_name",
-                "number_of_ads",
-                "based_in",
-                "verified",
-                "advertiser_page_url",
-                "creative_count",
-                "scrape_date"
-            ]
+            fieldnames = ["advertiser_name", "number_of_ads", "based_in", "verified", 
+                         "advertiser_url", "sample_ad_url", "scrape_date"]
             
-            with open(self.output_csv, 'w', newline='', encoding='utf-8') as csvfile:
+            with open(self.output_file, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
-                
-                for data in self.advertisers_data:
-                    writer.writerow({
-                        "advertiser_name": data["advertiser_name"],
-                        "number_of_ads": data["number_of_ads"],
-                        "based_in": data["based_in"],
-                        "verified": data["verified"],
-                        "advertiser_page_url": data["advertiser_page_url"],
-                        "creative_count": len(data["creative_urls"]),
-                        "scrape_date": data["scrape_date"]
-                    })
+                writer.writerows(self.data)
             
-            print(f"\n✓ Advertiser summary saved to {self.output_csv}")
+            print(f"\n✓ Data saved to {self.output_file}")
+            print(f"Total advertisers scraped: {len(self.data)}")
             
         except Exception as e:
             print(f"Error saving to CSV: {str(e)}")
     
-    def save_urls_to_json(self):
-        """Save all URLs (advertiser and creative) to JSON file"""
-        if not self.all_urls:
-            print("No URLs to save")
-            return
-        
-        try:
-            with open(self.output_json, 'w', encoding='utf-8') as jsonfile:
-                json.dump(self.all_urls, jsonfile, indent=2, ensure_ascii=False)
-            
-            print(f"✓ All URLs saved to {self.output_json}")
-            
-        except Exception as e:
-            print(f"Error saving to JSON: {str(e)}")
-    
-    def save_all_creative_urls_by_advertiser(self, output_file="creative_urls_by_advertiser.json"):
-        """Save creative URLs organized by advertiser"""
-        try:
-            organized_data = []
-            
-            for advertiser in self.advertisers_data:
-                organized_data.append({
-                    "advertiser_name": advertiser["advertiser_name"],
-                    "number_of_ads": advertiser["number_of_ads"],
-                    "based_in": advertiser["based_in"],
-                    "verified": advertiser["verified"],
-                    "advertiser_page_url": advertiser["advertiser_page_url"],
-                    "creative_urls": advertiser["creative_urls"],
-                    "total_creatives_found": len(advertiser["creative_urls"])
-                })
-            
-            with open(output_file, 'w', encoding='utf-8') as jsonfile:
-                json.dump(organized_data, jsonfile, indent=2, ensure_ascii=False)
-            
-            print(f"✓ Creative URLs by advertiser saved to {output_file}")
-            
-        except Exception as e:
-            print(f"Error saving creative URLs by advertiser: {str(e)}")
-    
     def print_summary(self):
         """Print summary of scraped data"""
-        if not self.advertisers_data:
+        if not self.data:
             print("No data scraped")
             return
         
         print(f"\n{'='*80}")
         print(f"SCRAPING SUMMARY")
         print(f"{'='*80}")
-        print(f"Total Advertisers: {len(self.advertisers_data)}")
-        verified_count = sum(1 for d in self.advertisers_data if d['verified'])
+        print(f"Total Advertisers: {len(self.data)}")
+        verified_count = sum(1 for d in self.data if d['verified'])
         print(f"Verified: {verified_count}")
-        print(f"Unverified: {len(self.advertisers_data) - verified_count}")
-        print(f"Total Creative URLs Extracted: {len(self.all_urls)}")
+        print(f"Unverified: {len(self.data) - verified_count}")
+        
+        with_ad_links = sum(1 for d in self.data if d['sample_ad_url'])
+        print(f"With Ad Links: {with_ad_links}")
         print(f"{'='*80}")
         
-        # Print first 3 records as sample
-        print("\nSample Data (First 3 Advertisers):")
-        for i, record in enumerate(self.advertisers_data[:3], 1):
+        # Print first 5 records as sample
+        print("\nSample Data (First 5):")
+        for i, record in enumerate(self.data[:5], 1):
             print(f"\n{i}. {record['advertiser_name']}")
             print(f"   Ads: {record['number_of_ads']}")
             print(f"   Based in: {record['based_in']}")
             print(f"   Verified: {record['verified']}")
-            print(f"   Advertiser Page: {record['advertiser_page_url']}")
-            print(f"   Creatives Found: {len(record['creative_urls'])}")
-            if record['creative_urls']:
-                print(f"   Sample Creative URLs:")
-                for url in record['creative_urls'][:2]:
-                    print(f"     - {url}")
+            print(f"   Advertiser URL: {record['advertiser_url']}")
+            print(f"   Sample Ad URL: {record['sample_ad_url']}")
 
 # Usage Example
 if __name__ == "__main__":
     # Initialize scraper
-    scraper = GoogleAdsTransparencyScraperAdvanced(
+    scraper = GoogleAdsTransparencyScraper(
         start_query="a",
-        region="US",
-        output_csv="google_ads_advertisers.csv",
-        output_json="google_ads_all_urls.json"
+        region="anywhere",
+        output_file="google_ads_transparency.csv"
     )
     
-    # Run scraper (with advertiser page visits)
-    print("Starting Google Ads Transparency Advanced Scraper...")
-    print("This will extract advertiser URLs and all creative URLs from each advertiser page")
-    scraper.scrape_all_pages(visit_advertiser_pages=True)
+    # Run scraper (set max_pages to limit, or None for all pages)
+    print("Starting Google Ads Transparency Scraper...")
+    print("⚠ Note: This will take time as it visits each advertiser page\n")
+    
+    scraper.scrape_all_pages(max_pages=5)  # Change to None to scrape all pages
     
     # Save results
     scraper.save_to_csv()
-    scraper.save_urls_to_json()
-    scraper.save_all_creative_urls_by_advertiser("creative_urls_detailed.json")
     
     # Print summary
     scraper.print_summary()

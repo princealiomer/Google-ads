@@ -1,2 +1,2 @@
-# Requirements for Google Ads Scraper
+# Requirements for local scraping
 selenium==4.16.0
